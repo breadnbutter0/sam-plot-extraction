@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='sam_plot_extraction',  # Replace with your package name
-    version='0.2.0',
+    version='0.2.1',
     author='Hansae Kim',
     author_email='kim4012@purdue.edu',
     description='Plot extraction using segment anything model',

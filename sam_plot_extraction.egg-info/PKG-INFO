@@ -1,6 +1,6 @@
 Metadata-Version: 2.2
 Name: sam_plot_extraction
-Version: 0.2.0
+Version: 0.2.1
 Summary: Plot extraction using segment anything model
 Home-page: https://github.com/breadnbutter0/sam-plot-extraction
 Author: Hansae Kim
@@ -40,17 +40,25 @@ Dynamic: summary
 plot extraction using segment anything model
 
 
+# install virtual environment
 ```bash
+conda create -n spet python=3.10 -y
+conda activate spet
+```
+
 # install sam plot extraction tool
+```bash
 pip install sam-plot-extraction
+```
 
-# istall dependencies
-pip install d2spy openrs-python
+# install dependencies
+```bash
+pip install d2spy openrs-python git+https://github.com/facebookresearch/segment-anything.git
+
+(CPU)
+pip install torch torchvision
+(GPU)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+
 conda install gdal -y
-
-# install pytorch (cpu only)
-pip3 install torch torchvision
-
-# or gpu version
-pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu118
 ```
