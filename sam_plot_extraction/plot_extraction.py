@@ -122,6 +122,7 @@ class PlotExtraction(LightImage):
     def load_sam(self, sam_checkpoint, type='automatic', model='vit_h', points_per_side=32):
     
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = device
         sam = sam_model_registry[model](checkpoint=sam_checkpoint)
         sam.to(device=device)
         
@@ -268,7 +269,7 @@ class PlotExtraction(LightImage):
         
     def initial_plots(self):
                 
-        img_rotated_resize = np.array(self.img_rotated.resize((self.resize[1],self.resize[0])))
+        img_rotated_resize = np.array(self.img_rotated.resize((self.resize[1],self.resize[0])), dtype=np.uint8)
         masks = self.mask_generator.generate(img_rotated_resize)
         mask_list = [mask['segmentation'] for mask in masks]
         
@@ -286,18 +287,7 @@ class PlotExtraction(LightImage):
         
         # return filtered_mask
         
-            
-    def to_geojson(self, gdf, rotation=False):
-        
-        if rotation:
-            gdf['geometry'] = gdf['geometry'].apply(lambda geom: rotate(geom, -self.slope_deg, origin=self.center_geo, use_radians=False))
-        
-        gdf_4326 = gdf.to_crs('EPSG:4326')
-        gdf_geojson = gdf_4326.to_json()
-        
-        return gdf_geojson
-    
-    
+                
     def grid_filling(self):
         
         x_l,y_l = np.array(self.cent_local)[:,0],np.array(self.cent_local)[:,1]
@@ -560,15 +550,18 @@ class PlotExtraction(LightImage):
             box=np.array([xmin,ymin,xmax,ymax]),
             multimask_output=False,
         )
+        self.added_mask = mask[0,:,:]
         
-        gdf_added = self.mask2polygon([mask])
         gdf_prev = self.gdf_final
+        gdf_prev['geometry'] = gdf_prev['geometry'].apply(lambda geom: rotate(geom, self.slope_deg, origin=self.center_geo, use_radians=False))
+        
+        gdf_added = self.mask2polygon([mask[0,:,:]])
         gdf_concat = gpd.GeoDataFrame(pd.concat([gdf_prev, gdf_added], ignore_index=True))
-        gdf_concat.set_crs(f'EPSG:{self.epsg}', inplace=True)        
+        
         gdf_assigned = self.assign_row_col(gdf_concat)
         gdf_assigned['geometry'] = gdf_assigned['geometry'].apply(lambda geom: rotate(geom, -self.slope_deg, origin=self.center_geo, use_radians=False))
+        gdf_assigned.set_crs(f'EPSG:{self.epsg}', inplace=True)
         self.gdf_final = gdf_assigned
-        
         
         # polygon = polygonize(mask[0,:,:], convex=True, simplify_tolerance=1.0)[0]
         
@@ -616,6 +609,17 @@ class PlotExtraction(LightImage):
         # self.gdf_final = gdf
         
         return gdf_assigned
+    
+    
+    def to_geojson(self, gdf, rotation=False):
+        
+        if rotation:
+            gdf['geometry'] = gdf['geometry'].apply(lambda geom: rotate(geom, -self.slope_deg, origin=self.center_geo, use_radians=False))
+        
+        gdf_4326 = gdf.to_crs('EPSG:4326')
+        gdf_geojson = gdf_4326.to_json()
+        
+        return gdf_geojson
     
     
     def evaluation(self, gt_filename, iou_threshold=0.5):
