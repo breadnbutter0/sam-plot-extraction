@@ -70,6 +70,9 @@ class PlotExtraction(LightImage):
         self.dist_thr2 = args.get('dist_thr2', 1)
         self.cc_coverage_thr = args.get('cc_coverage_thr', 0.0)
         
+        # Initialize variables
+        self.cent_local = None        
+        
         # output
         if args.get('out_filename') is not None:
             self.out_filename = args.get('out_filename')
@@ -246,11 +249,10 @@ class PlotExtraction(LightImage):
             x_loc.append(np.array(polygon_loc.exterior.xy[0]))
             y_loc.append(np.array(polygon_loc.exterior.xy[1]))
             cent_loc.append([polygon_loc.centroid.x, polygon_loc.centroid.y])
-        self.cent_local = cent_loc
-        
+                
         plot_rotated = {'id':[],'geometry':[]}
 
-        for i,(x_loc,y_loc) in enumerate(self.cent_local):
+        for i,(x_loc,y_loc) in enumerate(cent_loc):
                 
             ul = [x_loc - self.plot_width/2, y_loc + self.plot_height/2]
             ur = [x_loc + self.plot_width/2, y_loc + self.plot_height/2]
@@ -263,6 +265,11 @@ class PlotExtraction(LightImage):
             plot_rotated['geometry'].append(sPolygon(bbox))
             
         gdf = gpd.GeoDataFrame(plot_rotated, geometry='geometry')
+        
+        if self.cent_local is None:
+            self.cent_local = cent_loc
+        else:
+            self.cent_local += cent_loc
         
         return gdf
         
@@ -622,7 +629,7 @@ class PlotExtraction(LightImage):
         return gdf_geojson
     
     
-    def evaluation(self, gt_filename, iou_threshold=0.5):
+    def evaluation(self, gt_filename):
         
         # Read your GeoJSON files (adjust the file names as needed)
         gt_gdf = gpd.read_file(gt_filename)
