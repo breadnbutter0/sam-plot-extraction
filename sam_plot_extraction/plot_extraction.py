@@ -29,6 +29,8 @@ from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamP
 
 from affine import Affine
 
+import matplotlib.pyplot as plt
+
 
 class PlotExtraction(LightImage):
     
@@ -69,9 +71,6 @@ class PlotExtraction(LightImage):
         self.dist_thr = args.get('dist_thr', 1)
         self.dist_thr2 = args.get('dist_thr2', 1)
         self.cc_coverage_thr = args.get('cc_coverage_thr', 0.0)
-        
-        # Initialize variables
-        self.cent_local = None        
         
         # output
         if args.get('out_filename') is not None:
@@ -266,7 +265,7 @@ class PlotExtraction(LightImage):
             
         gdf = gpd.GeoDataFrame(plot_rotated, geometry='geometry')
         
-        if self.cent_local is None:
+        if self.cent_local:
             self.cent_local = cent_loc
         else:
             self.cent_local += cent_loc
@@ -275,7 +274,8 @@ class PlotExtraction(LightImage):
         
         
     def initial_plots(self):
-                
+        
+        self.cent_local = []
         img_rotated_resize = np.array(self.img_rotated.resize((self.resize[1],self.resize[0])), dtype=np.uint8)
         masks = self.mask_generator.generate(img_rotated_resize)
         mask_list = [mask['segmentation'] for mask in masks]
@@ -292,7 +292,7 @@ class PlotExtraction(LightImage):
         
         # self.initial_mask = mask_raster
         
-        # return filtered_mask
+        return gdf_initial
         
                 
     def grid_filling(self):
@@ -359,8 +359,99 @@ class PlotExtraction(LightImage):
             min_dist = min(np.sqrt((x_ord - x)**2 + (y_ord - y)**2))
             # missing_ind = np.where(distances < min(self.plot_width, self.plot_height) - max(del_width, del_height))[0]
             if min_dist > min(self.plot_width/2, self.plot_height/2):
-                rc.append([r,c])                
-                        
+                rc.append([r,c])
+        
+        # plt.scatter(xv,yv , label='grid')
+        # plt.scatter(x_l,y_l, label='Initial')
+        # plt.scatter(xv[np.array(rc)[:,0],np.array(rc)[:,1]],
+        #             yv[np.array(rc)[:,0],np.array(rc)[:,1]],
+        #             label='filled')
+        # plt.legend()
+        # plt.show()           
+        
+        plot_size = ((-self.plot_height/self.y_spacing), (self.plot_width/self.x_spacing))
+        mask_size = (500,500)
+        
+        print(f"Detected missing plots: {len(rc)}")
+        added_mask = []
+        for r, c in rc:
+            print(r,c)
+            x, y = [xv[r, c], yv[r, c]]
+            x_img, y_img = (np.array([x, y]) - np.array([self.ext_left, self.ext_down])) / self.x_spacing
+            y_img = self.nrow - y_img
+            
+            # Define the bounding box for clipping
+            xmin = int(x_img - mask_size[1])
+            xmax = int(x_img + mask_size[1])
+            ymin = int(y_img - mask_size[0])
+            ymax = int(y_img + mask_size[0])
+            
+            if xmin<0:
+                x_center = int((xmax + xmin)/2)
+                xmin = 0
+            else:
+                x_center  = int((xmax + xmin)/2)
+                
+            if ymin<0:
+                y_center = int((ymax + ymin)/2)
+                ymin = 0
+            else:
+                y_center = int((ymax + ymin)/2)
+            
+            # Define the bounding box for the box prompt
+            box_xmin = max(0, int((x_center-xmin - plot_size[1]/2)))
+            box_xmax = max(0, int((x_center-xmin + plot_size[1]/2)))
+            box_ymin = max(0, int((y_center-ymin - plot_size[0]/2)))
+            box_ymax = max(0, int((y_center-ymin + plot_size[0]/2)))
+            
+            xmin = max(0, int(x_img - mask_size[1]))
+            xmax = max(0, int(x_img + mask_size[1]))
+            ymin = max(0, int(y_img - mask_size[0]))
+            ymax = max(0, int(y_img + mask_size[0]))
+            
+            # Clip the image
+            clipped_img = np.array(self.img_rotated)[ymin:ymax, xmin:xmax]
+            
+            # Generate mask for the clipped image
+            self.predictor.set_image(clipped_img)
+            
+            # # box prompt segmentation
+            # mask, scores, _ = self.predictor.predict(
+            #     point_coords = None,
+            #     point_labels = None,
+            #     box=np.array([box_xmin,box_ymin,box_xmax,box_ymax]),
+            #     multimask_output=True,
+            # )
+            
+            # point prompot segmentation 
+            mask, _, _ = self.predictor.predict(
+            point_coords=np.array([[x_center-xmin , y_center-ymin]]),
+            point_labels=np.array([1]),
+            multimask_output=False,
+            )
+            
+            mask = mask[0, :, :]
+            
+            # plt.imshow(clipped_img)
+            # # plt.plot([box_xmin,box_xmax,box_xmax,box_xmin,box_xmin],
+            # #          [box_ymin,box_ymin,box_ymax,box_ymax,box_ymin],
+            # #          c='r')
+            # plt.scatter(x_center-xmin, y_center-ymin, c='r')
+            # plt.imshow(mask, alpha=0.5, cmap='cividis')
+            # plt.show()
+            
+            # Resize the mask to match the resized image dimensions
+            mask_big = np.zeros(self.img_rotated.size[::-1], dtype=np.uint8)
+            mask_big[ymin:ymax, xmin:xmax] = mask
+            
+            mask = cv2.resize(mask_big, (self.resize[1], self.resize[0]), interpolation=cv2.INTER_NEAREST)
+                   
+            added_mask.append(mask)
+            
+        # plt.imshow(np.sum(added_mask, axis=0))
+            
+                
+        '''
         img_rotated_resize = np.array(self.img_rotated.resize((self.resize[1],self.resize[0])))
         self.predictor.set_image(np.array(img_rotated_resize))
 
@@ -368,13 +459,43 @@ class PlotExtraction(LightImage):
         for r,c in rc:
             x,y = [xv[r,c],yv[r,c]]
             x_img, y_img = (np.array([x,y]) - np.array([self.ext_left,self.ext_down])) / self.x_spacing
+            x_img_resized = x_img/self.scale_col
+            y_img_resized = self.resize[0] - y_img/self.scale_row
+            
+            # # create a box for box prompt segmentation
+            # xmin = int(x_img_resized - ((self.plot_width/self.x_spacing)/2)/self.scale_col)
+            # xmax = int(x_img_resized + ((self.plot_width/self.x_spacing)/2)/self.scale_col)
+            # ymin = int(y_img_resized - ((self.plot_height/self.y_spacing)/2)/self.scale_row)
+            # ymax = int(y_img_resized + ((self.plot_height/self.y_spacing)/2)/self.scale_row)
+            
+            # mask, scores, _ = self.predictor.predict(
+            #     point_coords = None,
+            #     point_labels = None,
+            #     box=np.array([xmin,ymin,xmax,ymax]),
+            #     multimask_output=True,
+            # )
+            # bestidx = np.argmax(scores)
+            # mask = mask[bestidx,:,:]
             
             mask, _, _ = self.predictor.predict(
-                point_coords = np.array([[x_img/self.scale_col, self.resize[0] - y_img/self.scale_row]]),
+                point_coords = np.array([[int(x_img_resized), int(y_img_resized)]]),
                 point_labels = np.array([1]),
                 multimask_output=True,
             )
-            added_mask.append(mask[0,:,:])
+            mask = mask[0,:,:]
+            
+            added_mask.append(mask)
+        '''
+        #     plt.plot([xmin,xmax,xmax,xmin,xmin],[ymin,ymin,ymax,ymax,ymin],c='r')
+        
+        # plt.figure(figsize=(10,10))
+        # plt.imshow(img_rotated_resize)
+        # plt.scatter(x_img_resized, y_img_resized, c='r')
+        # plt.plot([xmin,xmax,xmax,xmin,xmin],[ymin,ymin,ymax,ymax,ymin],c='r')
+        # plt.show()
+    
+        # plt.imshow(np.sum(added_mask, axis=0))
+        # plt.show()
             
         # self.added_mask = added_mask
         # self.mask = self.initial_mask + self.added_mask        
@@ -629,11 +750,16 @@ class PlotExtraction(LightImage):
         return gdf_geojson
     
     
-    def evaluation(self, gt_filename):
+    def evaluation(self, gt_filename, result_filename=None):
         
         # Read your GeoJSON files (adjust the file names as needed)
         gt_gdf = gpd.read_file(gt_filename)
-        result_gdf = self.gdf_final
+        
+        if result_filename is not None:
+            result_gdf = gpd.read_file(result_filename)
+        else:
+            result_gdf = self.gdf_final
+            
         if gt_gdf.crs is not None:
             gt_gdf.to_crs(result_gdf.crs.to_string(), inplace=True)
         else:
