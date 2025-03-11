@@ -279,6 +279,7 @@ class PlotExtraction(LightImage):
         img_rotated_resize = np.array(self.img_rotated.resize((self.resize[1],self.resize[0])), dtype=np.uint8)
         masks = self.mask_generator.generate(img_rotated_resize)
         mask_list = [mask['segmentation'] for mask in masks]
+        # self.initial_mask_list = mask_list
         
         gdf_initial = self.mask2polygon(mask_list)
         self.gdf_initial = gdf_initial
@@ -375,7 +376,7 @@ class PlotExtraction(LightImage):
         print(f"Detected missing plots: {len(rc)}")
         added_mask = []
         for r, c in rc:
-            print(r,c)
+            # print(r,c)
             x, y = [xv[r, c], yv[r, c]]
             x_img, y_img = (np.array([x, y]) - np.array([self.ext_left, self.ext_down])) / self.x_spacing
             y_img = self.nrow - y_img
